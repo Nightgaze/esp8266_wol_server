@@ -138,7 +138,7 @@ void sendCommand(const IPAddress ip, const byte mac[], int command) {
     }
     else
     {
-        String json = String("{\"MacAddress\":\"00:D8:61:C9:61:A8\",\"Command\":") + command + "}";
+        String json = String("{\"MacAddress\":\"" + MAC_ADDRESS + "\",\"Command\":") + command + "}";
         udpShutdown.write(json.c_str());
         udpShutdown.endPacket();
     }
@@ -155,11 +155,6 @@ byte valFromChar(char c) {
     return 0;
 }
 
-/*
-* Very simple converter from a String representation of a MAC address to
-* 6 bytes. Does not handle errors or delimiters, but requires very little
-* code space and no libraries.
-*/
 void macStringToBytes(const String mac, byte* bytes) {
     if (mac.length() >= 12) {
         for (int i = 0; i < 6; i++) {
