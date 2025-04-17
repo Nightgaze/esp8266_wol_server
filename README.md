@@ -44,7 +44,7 @@ A small ESP8266-based server that supports **Wake-on-LAN (WoL)**. It can also se
 
 - ESP8266 microcontroller (e.g., NodeMCU, Wemos D1 Mini)
 - Compatible firmware uploaded to handle HTTP requests
-- (Optional) Wolow Companion running on the target PC for shutdown/restart support
+- (Optional) Wolow server running on the target PC for shutdown/restart support
 
 ---
 
@@ -75,6 +75,35 @@ https://my-esp8266.local:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cm
 - Ensure the ESP8266 is on the same local network as the target PC.
 - Enable Wake-on-LAN in your PC’s BIOS and network adapter settings.
 - Wolow must be running for shutdown and restart commands to work.
+
+---
+
+## 🌍 Accessing from Outside Your Network (Port Forwarding)
+
+To control your ESP8266 remotely over the internet, you'll need to set up **port forwarding** on your router:
+
+### 1. Assign a Static IP to the ESP8266
+- Log into your router.
+- Find **DHCP settings** or **connected devices**.
+- Reserve a static IP for your ESP8266's MAC address (e.g., `192.168.1.100`).
+
+### 2. Set Up Port Forwarding
+- Go to your router’s **Port Forwarding** section.
+- Forward **external port 8080** to your ESP8266’s local IP on **internal port 8080**.
+  - Protocol: **TCP**
+  - External Port: `8080`
+  - Internal IP: `192.168.1.100` (replace with your ESP8266 IP)
+  - Internal Port: `8080`
+
+### 3. Get Your Public IP Address
+- Visit [https://whatismyipaddress.com](https://whatismyipaddress.com)
+- Note your public IP (e.g., `123.45.67.89`)
+
+### 4. Make a Remote Request
+You can now access your ESP8266 from anywhere using:
+
+```
+http://123.45.67.89:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cmd=99
 
 ---
 
