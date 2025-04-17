@@ -100,7 +100,7 @@ To control your ESP8266 remotely over the internet, you'll need to set up **port
 - Note your public IP (e.g., `123.45.67.89`)
 
 ### 4. Make a Remote Request
-You can now access your ESP8266 from anywhere using:
+Now you can turn on your pc from anywhere using:
 
 ```
 http://123.45.67.89:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cmd=99
