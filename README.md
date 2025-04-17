@@ -6,6 +6,7 @@ PC Wake
 https://server:8080/command?mac=[REPLACE_WITH_MAC]&bcast=255&pwd=[REPLACE_WITH_PASSWORD]&cmd=99
 
 The following commands require Wollow server installation (https://wolow.site/)
+
 PC Shutdown:
 
 https://server:8080/command?mac=[REPLACE_WITH_MAC]&bcast=255&pwd=[REPLACE_WITH_PASSWORD]&cmd=0
