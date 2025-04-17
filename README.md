@@ -17,7 +17,7 @@ A small ESP8266-based server that supports **Wake-on-LAN (WoL)**. It can also se
 
 `GET https://[YOUR_SERVER]:8080/command?mac=[REPLACE_WITH_MAC]&bcast=255&pwd=[REPLACE_WITH_PASSWORD]&cmd=99`
 
-### ⚠ Requires [Wolow](https://wolow.site/) for the following:
+### ⚠ Requires [Wolow Companion](https://wolow.site/#wolow-companion) for the following:
 
 #### ⏻ Shutdown PC
 
