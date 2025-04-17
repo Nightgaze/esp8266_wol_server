@@ -44,7 +44,7 @@ A small ESP8266-based server that supports **Wake-on-LAN (WoL)**. It can also se
 
 - ESP8266 microcontroller (e.g., NodeMCU, Wemos D1 Mini)
 - Compatible firmware uploaded to handle HTTP requests
-- (Optional) Wolow server running on the target PC for shutdown/restart support
+- (Optional) Wolow Companion running on the target PC for shutdown/restart support
 
 ---
 
@@ -81,7 +81,7 @@ https://my-esp8266.local:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cm
 ## 📎 Resources
 
 - [ESP8266 Documentation](https://arduino-esp8266.readthedocs.io/)
-- [Wolow Official Site](https://wolow.site/)
+- [Wolow Official Site](https://wolow.site/#wolow-companion)
 
 ---
 
