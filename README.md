@@ -73,7 +73,7 @@ https://my-esp8266.local:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cm
 ## 🧠 Notes
 
 - Ensure the ESP8266 is on the same local network as the target PC.
-- Enable Wake-on-LAN in your PC’s BIOS and network adapter settings.
+- Enable Wake-on-LAN in your PC’s BIOS and network adapter settings[BIOS Settings](https://youtu.be/7rnpV8onpjM?si=Z1_Jr_2Q9qIaoAOS) [Network Adapter Settings](https://youtu.be/4-zlIAyy10k?si=i68x27b43tMmLcFk)
 - Wolow must be running for shutdown and restart commands to work.
 
 ---
