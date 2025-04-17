@@ -14,6 +14,7 @@ int udpShutdownPort = 20388;
 ESP8266WebServer server(1337);
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
+const char* mac_addr = MAC_ADDRESS;
 String pwd = WOL_PASS;
 
 IPAddress broadcastIp(192, 168, 0, 255);
@@ -25,13 +26,13 @@ void macStringToBytes(const String mac, byte* bytes);
 void setup(void) {
     Serial.begin(115200);
     pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, HIGH); // turn on led
+    digitalWrite(LED_BUILTIN, HIGH);
     beginWifi();
     while (!mdns.begin("esp8266", WiFi.localIP())) {}
     udp.begin(9);
     udpShutdown.begin(udpShutdownPort);
 
-    // will display a form that, once submitted, sends a GET to /command
+
     server.on("/", []() {
         digitalWrite(LED_BUILTIN, LOW);
         IPAddress target_ip;
@@ -122,10 +123,6 @@ void sendCommand(const IPAddress ip, const byte mac[], int command) {
     digitalWrite(LED_BUILTIN, LOW);
     udpShutdown.beginPacket(ip, udpShutdownPort);
 
-    /*
-    * Send a Wake-On-LAN packet for the given MAC address, to the given IP
-    * address. Often the IP address will be the local broadcast.
-    */
     if (command == 99)
     {
         byte preamble[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
@@ -138,7 +135,7 @@ void sendCommand(const IPAddress ip, const byte mac[], int command) {
     }
     else
     {
-        String json = String("{\"MacAddress\":\"" + MAC_ADDRESS + "\",\"Command\":") + command + "}";
+        String json = String("{\"MacAddress\":\"") + mac_addr + String("\",\"Command\":") + command + "}";
         udpShutdown.write(json.c_str());
         udpShutdown.endPacket();
     }
