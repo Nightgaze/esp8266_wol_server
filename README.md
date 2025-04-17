@@ -104,7 +104,9 @@ Now you can turn on your pc from anywhere using:
 
 ```
 http://123.45.67.89:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cmd=99
+---
 
+> ⚠️ Your IP can change if your ISP uses dynamic IPs, which will break remote access unless you use DDNS.
 ---
 
 ## 📎 Resources
