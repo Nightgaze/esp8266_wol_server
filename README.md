@@ -17,7 +17,7 @@ A small ESP8266-based server that supports **Wake-on-LAN (WoL)**. It can also se
 
 `GET https://[YOUR_SERVER]:8080/command?mac=[REPLACE_WITH_MAC]&bcast=255&pwd=[REPLACE_WITH_PASSWORD]&cmd=99`
 
-### ⚠ Requires [Wolow](https://wolow.site/) for the following:
+### ⚠ Requires [Wolow Companion](https://wolow.site/#wolow-companion) for the following:
 
 #### ⏻ Shutdown PC
 
@@ -73,15 +73,46 @@ https://my-esp8266.local:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cm
 ## 🧠 Notes
 
 - Ensure the ESP8266 is on the same local network as the target PC.
-- Enable Wake-on-LAN in your PC’s BIOS and network adapter settings.
+- Enable Wake-on-LAN in your PC’s [BIOS Settings](https://youtu.be/7rnpV8onpjM?si=Z1_Jr_2Q9qIaoAOS) and [Network Adapter Settings](https://youtu.be/4-zlIAyy10k?si=i68x27b43tMmLcFk)
 - Wolow must be running for shutdown and restart commands to work.
 
+---
+
+## 🌍 Accessing from Outside Your Network (Port Forwarding)
+
+To control your ESP8266 remotely over the internet, you'll need to set up **port forwarding** on your router:
+
+### 1. Assign a Static IP to the ESP8266
+- Log into your router.
+- Find **DHCP settings** or **connected devices**.
+- Reserve a static IP for your ESP8266's MAC address (e.g., `192.168.1.100`).
+
+### 2. Set Up Port Forwarding
+- Go to your router’s **Port Forwarding** section.
+- Forward **external port 8080** to your ESP8266’s local IP on **internal port 8080**.
+  - Protocol: **TCP**
+  - External Port: `8080`
+  - Internal IP: `192.168.1.100` (replace with your ESP8266 IP)
+  - Internal Port: `8080`
+
+### 3. Get Your Public IP Address
+- Visit [https://whatismyipaddress.com](https://whatismyipaddress.com)
+- Note your public IP (e.g., `123.45.67.89`)
+
+### 4. Make a Remote Request
+Now you can turn on your pc from anywhere using:
+
+```
+http://123.45.67.89:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cmd=99
+---
+
+> ⚠️ Your IP can change if your ISP uses dynamic IPs, which will break remote access unless you use DDNS.
 ---
 
 ## 📎 Resources
 
 - [ESP8266 Documentation](https://arduino-esp8266.readthedocs.io/)
-- [Wolow Official Site](https://wolow.site/)
+- [Wolow Official Site](https://wolow.site/#wolow-companion)
 
 ---
 
