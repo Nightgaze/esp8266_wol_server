@@ -6,6 +6,8 @@
 #include <SPI.h>
 #include <WiFiUDP.h>
 #include "settings.h"
+#include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 MDNSResponder mdns;
 WiFiUDP udp;
@@ -16,6 +18,11 @@ const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 const char* mac_addr = MAC_ADDRESS;
 String pwd = WOL_PASS;
+
+String duckDomain = DUCK_DOMAIN;
+String duckToken = DUCK_TOKEN;
+unsigned long lastDnsUpdate = 0;
+unsigned long dnsUpdateInterval = 3600000UL;
 
 IPAddress broadcastIp(192, 168, 0, 255);
 
@@ -28,6 +35,8 @@ void setup(void) {
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, HIGH);
     beginWifi();
+    updateDuckDNS();
+
     while (!mdns.begin("esp8266", WiFi.localIP())) {}
     udp.begin(9);
     udpShutdown.begin(udpShutdownPort);
@@ -96,6 +105,13 @@ void loop(void) {
     {
         ESP.reset();
     }
+
+    if (millis() - lastDnsUpdate > dnsUpdateInterval)
+    {
+        lastDnsUpdate = millis();
+        updateDuckDNS();
+    }
+
     server.handleClient();
 }
 
@@ -161,4 +177,23 @@ void macStringToBytes(const String mac, byte* bytes) {
     else {
         Serial.println("Incorrect MAC format.");
     }
+}
+
+void updateDuckDNS()
+{
+    WiFiClientSecure client;
+    client.setInsecure(); // Skip certificate verification
+    HTTPClient http;
+    String url = "https://www.duckdns.org/update?domains=" + duckDomain +"&token=" + duckToken +"&ip=";
+    http.begin(client, url);
+    int code = http.GET();
+    if (code > 0)
+    {
+        Serial.println(http.getString());
+    }
+    else
+    {
+        Serial.printf("DuckDNS update failed (%d)\n", code);
+    }
+    http.end();
 }
