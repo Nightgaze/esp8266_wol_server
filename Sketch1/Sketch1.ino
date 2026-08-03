@@ -1,199 +1,422 @@
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266mDNS.h>
 #include <Arduino.h>
-#include <SPI.h>
-#include <WiFiUDP.h>
-#include "settings.h"
 #include <ESP8266HTTPClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#include <WiFiClient.h>
 #include <WiFiClientSecure.h>
+#include <WiFiUDP.h>
+
+#include "settings.h"
+
+// ------------------------------------------------------------
+// Constants
+// ------------------------------------------------------------
+
+constexpr uint16_t HTTP_PORT = 1337;
+constexpr uint16_t UDP_SHUTDOWN_PORT = 20388;
+constexpr uint16_t WOL_PORT = 9;
+
+constexpr uint32_t DNS_UPDATE_INTERVAL = 3600000UL; // 1 hour
+
+constexpr uint8_t WOL_PREAMBLE_SIZE = 6;
+constexpr uint8_t MAC_SIZE = 6;
+constexpr uint8_t WOL_REPEAT = 16;
+
+constexpr int CMD_WAKE = 99;
+
+// ------------------------------------------------------------
+// Globals
+// ------------------------------------------------------------
+
+ESP8266WebServer server(HTTP_PORT);
 
 MDNSResponder mdns;
+
 WiFiUDP udp;
 WiFiUDP udpShutdown;
-int udpShutdownPort = 20388;
-ESP8266WebServer server(1337);
+
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
+
 const char* mac_addr = MAC_ADDRESS;
-String pwd = WOL_PASS;
+const char* wolPassword = WOL_PASS;
 
-String duckDomain = DUCK_DOMAIN;
-String duckToken = DUCK_TOKEN;
+const char* duckDomain = DUCK_DOMAIN;
+const char* duckToken = DUCK_TOKEN;
+
 unsigned long lastDnsUpdate = 0;
-unsigned long dnsUpdateInterval = 3600000UL;
 
-IPAddress broadcastIp(192, 168, 0, 255);
+// ------------------------------------------------------------
+// Function declarations
+// ------------------------------------------------------------
 
-void sendCommand(const IPAddress ip, const byte mac[], int command);
 void beginWifi();
-void macStringToBytes(const String mac, byte* bytes);
+void reconnectWifi();
 
-void setup(void) {
-    Serial.begin(115200);
-    pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, HIGH);
-    beginWifi();
-    updateDuckDNS();
+void updateDuckDNS();
 
-    while (!mdns.begin("esp8266", WiFi.localIP())) {}
-    udp.begin(9);
-    udpShutdown.begin(udpShutdownPort);
+void handleHome();
+void handleCommand();
+void handleNotFound();
 
+void sendCommand(const IPAddress& ip, const byte* mac, int command);
 
-    server.on("/", []() {
-        digitalWrite(LED_BUILTIN, LOW);
-        IPAddress target_ip;
-        target_ip = WiFi.localIP();
-        String html_home_page = HOME_PAGE;
-        html_home_page.replace("{favicon}", FAVICON);
-        html_home_page.replace("{ip1}", String(target_ip[0]));
-        html_home_page.replace("{ip2}", String(target_ip[1]));
-        html_home_page.replace("{ip3}", String(target_ip[2]));
-        server.send(200, "text/html", html_home_page);
-        delay(500);
-        digitalWrite(LED_BUILTIN, HIGH);
-     });
+bool macStringToBytes(const String& mac, byte* bytes);
 
-    server.on("/command", []()
-        {
-            digitalWrite(LED_BUILTIN, LOW);
+byte valFromChar(char c);
 
-            if (server.arg("mac").length() <= 12 && server.arg("pwd").length() <= 200 && server.arg("bcast").length() <= 3) {
-                String mac = server.arg("mac");
-                String p = server.arg("pwd");
-                int bcast = server.arg("bcast").toInt();
-                int command = server.arg("cmd").toInt();
-
-                if (p == pwd) {
-                    IPAddress target_ip;
-                    target_ip = WiFi.localIP();
-                    target_ip[3] = bcast;
-                    Serial.println("Sending Shutdown");
-                    Serial.println(target_ip);
-
-                    byte target_mac[6];
-                    macStringToBytes(mac, target_mac);
-
-                    sendCommand(target_ip, target_mac, command);
-                    server.send(200, "text/plain", "Shutdown sent to " + target_ip.toString() + " " + mac);
-                }
-                else {
-                    server.send(403, "text/plain", "Invalid password");
-                }
-            }
-            else {
-                server.send(403, "text/plain", "Invalid data");
-            }
-            delay(1000);
-            digitalWrite(LED_BUILTIN, HIGH);
-    });
-
-    server.onNotFound([]() {
-        digitalWrite(LED_BUILTIN, LOW);
-        server.send(404, "text/plain", "");
-        delay(100);
-        digitalWrite(LED_BUILTIN, HIGH);
-    });
-    server.begin();
-    Serial.println("HTTP server started");
+inline void ledOn()
+{
+    digitalWrite(LED_BUILTIN, LOW);
 }
 
-void loop(void) {
-    if (WiFi.status() != WL_CONNECTED)
+inline void ledOff()
+{
+    digitalWrite(LED_BUILTIN, HIGH);
+}
+
+// ------------------------------------------------------------
+// Setup
+// ------------------------------------------------------------
+
+void setup()
+{
+    Serial.begin(115200);
+
+    pinMode(LED_BUILTIN, OUTPUT);
+    ledOff();
+
+    beginWifi();
+
+    if (!mdns.begin("esp8266", WiFi.localIP()))
     {
-        ESP.reset();
+        Serial.println(F("Failed to start mDNS"));
     }
 
-    if (millis() - lastDnsUpdate > dnsUpdateInterval)
+    udp.begin(WOL_PORT);
+    udpShutdown.begin(UDP_SHUTDOWN_PORT);
+
+    server.on("/", handleHome);
+    server.on("/command", handleCommand);
+    server.onNotFound(handleNotFound);
+
+    server.begin();
+
+    Serial.println(F("HTTP server started"));
+}
+
+// ------------------------------------------------------------
+// Loop
+// ------------------------------------------------------------
+
+void loop()
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        reconnectWifi();
+    }
+
+    if (millis() - lastDnsUpdate >= DNS_UPDATE_INTERVAL)
     {
         lastDnsUpdate = millis();
         updateDuckDNS();
     }
 
+    mdns.update();
+
     server.handleClient();
 }
 
+// ------------------------------------------------------------
+// WiFi
+// ------------------------------------------------------------
 
-void beginWifi() {
+void beginWifi()
+{
+    WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
-    Serial.println("");
 
-    while (WiFi.status() != WL_CONNECTED) {
-        digitalWrite(LED_BUILTIN, LOW);
-        delay(250);
-        Serial.print(".");
-        digitalWrite(LED_BUILTIN, HIGH);
+    Serial.println();
+    Serial.print(F("Connecting"));
+
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        ledOn();
+        delay(200);
+        ledOff();
+        delay(200);
+
+        Serial.print('.');
     }
 
-    Serial.println("");
-    Serial.print("Connected to ");
+    Serial.println();
+    Serial.print(F("Connected to "));
     Serial.println(ssid);
-    Serial.print("IP address: ");
+
+    Serial.print(F("IP: "));
     Serial.println(WiFi.localIP());
+
+    updateDuckDNS();
 }
 
+void reconnectWifi()
+{
+    Serial.println(F("WiFi disconnected"));
 
-void sendCommand(const IPAddress ip, const byte mac[], int command) {
-    digitalWrite(LED_BUILTIN, LOW);
-    udpShutdown.beginPacket(ip, udpShutdownPort);
+    WiFi.disconnect();
+    WiFi.begin(ssid, password);
 
-    if (command == 99)
+    unsigned long start = millis();
+
+    while (WiFi.status() != WL_CONNECTED &&
+        millis() - start < 10000)
     {
-        byte preamble[] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
-        udp.beginPacket(ip, 9);
-        udp.write(preamble, 6);
-        for (uint8 i = 0; i < 16; i++) {
-            udp.write(mac, 6);
+        delay(250);
+        Serial.print('.');
+    }
+
+    if (WiFi.status() == WL_CONNECTED)
+    {
+        Serial.println();
+        Serial.println(F("Reconnected"));
+
+        if (!mdns.begin("esp8266", WiFi.localIP()))
+        {
+            Serial.println(F("Failed to restart mDNS"));
         }
-        udp.endPacket();
+
+        updateDuckDNS();
     }
     else
     {
-        String json = String("{\"MacAddress\":\"") + mac_addr + String("\",\"Command\":") + command + "}";
-        udpShutdown.write(json.c_str());
-        udpShutdown.endPacket();
-    }
-
-    delay(100);
-    digitalWrite(LED_BUILTIN, HIGH);
-}
-
-
-byte valFromChar(char c) {
-    if (c >= 'a' && c <= 'f') return ((byte)(c - 'a') + 10) & 0x0F;
-    if (c >= 'A' && c <= 'F') return ((byte)(c - 'A') + 10) & 0x0F;
-    if (c >= '0' && c <= '9') return ((byte)(c - '0')) & 0x0F;
-    return 0;
-}
-
-void macStringToBytes(const String mac, byte* bytes) {
-    if (mac.length() >= 12) {
-        for (int i = 0; i < 6; i++) {
-            bytes[i] = (valFromChar(mac.charAt(i * 2)) << 4) | valFromChar(mac.charAt(i * 2 + 1));
-        }
-    }
-    else {
-        Serial.println("Incorrect MAC format.");
+        Serial.println();
+        Serial.println(F("Reconnect failed. Restarting..."));
+        ESP.restart();
     }
 }
+
+// ------------------------------------------------------------
+// DuckDNS
+// ------------------------------------------------------------
 
 void updateDuckDNS()
 {
     WiFiClientSecure client;
-    client.setInsecure(); // Skip certificate verification
+    client.setInsecure();
+
     HTTPClient http;
-    String url = "https://www.duckdns.org/update?domains=" + duckDomain +"&token=" + duckToken +"&ip=";
+
+    char url[256];
+
+    snprintf(
+        url,
+        sizeof(url),
+        "https://www.duckdns.org/update?domains=%s&token=%s&ip=",
+        duckDomain,
+        duckToken);
+
     http.begin(client, url);
+
     int code = http.GET();
+
     if (code > 0)
     {
+        Serial.print(F("DuckDNS: "));
         Serial.println(http.getString());
     }
     else
     {
-        Serial.printf("DuckDNS update failed (%d)\n", code);
+        Serial.print(F("DuckDNS update failed: "));
+        Serial.println(code);
     }
+
     http.end();
+}
+// ------------------------------------------------------------
+// HTTP Handlers
+// ------------------------------------------------------------
+
+void handleHome()
+{
+    ledOn();
+
+    IPAddress ip = WiFi.localIP();
+
+    String page = HOME_PAGE;
+
+    page.replace("{favicon}", FAVICON);
+    page.replace("{ip1}", String(ip[0]));
+    page.replace("{ip2}", String(ip[1]));
+    page.replace("{ip3}", String(ip[2]));
+
+    server.send(200, "text/html", page);
+
+    ledOff();
+}
+
+void handleCommand()
+{
+    ledOn();
+
+    if (!server.hasArg("mac") ||
+        !server.hasArg("pwd") ||
+        !server.hasArg("bcast") ||
+        !server.hasArg("cmd"))
+    {
+        server.send(400, "text/plain", "Missing parameters");
+        ledOff();
+        return;
+    }
+
+    String mac = server.arg("mac");
+    String password = server.arg("pwd");
+
+    if (password != wolPassword)
+    {
+        server.send(403, "text/plain", "Invalid password");
+        ledOff();
+        return;
+    }
+
+    if (mac.length() != 12)
+    {
+        server.send(400, "text/plain", "Invalid MAC");
+        ledOff();
+        return;
+    }
+
+    byte targetMac[6];
+
+    if (!macStringToBytes(mac, targetMac))
+    {
+        server.send(400, "text/plain", "Invalid MAC");
+        ledOff();
+        return;
+    }
+
+    int broadcast = server.arg("bcast").toInt();
+
+    if (broadcast < 0 || broadcast > 255)
+    {
+        server.send(400, "text/plain", "Invalid broadcast");
+        ledOff();
+        return;
+    }
+
+    int command = server.arg("cmd").toInt();
+
+    IPAddress targetIp = WiFi.localIP();
+    targetIp[3] = broadcast;
+
+    Serial.println();
+    Serial.println(F("Sending command"));
+    Serial.print(F("Target IP: "));
+    Serial.println(targetIp);
+
+    sendCommand(targetIp, targetMac, command);
+
+    String response =
+        "Command sent to " +
+        targetIp.toString() +
+        " (" +
+        mac +
+        ")";
+
+    server.send(200, "text/plain", response);
+
+    ledOff();
+}
+
+void handleNotFound()
+{
+    server.send(404, "text/plain", "");
+}
+
+// ------------------------------------------------------------
+// MAC Helpers
+// ------------------------------------------------------------
+
+byte valFromChar(char c)
+{
+    if (c >= '0' && c <= '9')
+        return c - '0';
+
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+
+    return 255;
+}
+
+bool macStringToBytes(const String& mac, byte* bytes)
+{
+    if (mac.length() != 12)
+        return false;
+
+    for (int i = 0; i < 6; i++)
+    {
+        byte high = valFromChar(mac[i * 2]);
+        byte low = valFromChar(mac[i * 2 + 1]);
+
+        if (high == 255 || low == 255)
+            return false;
+
+        bytes[i] = (high << 4) | low;
+    }
+
+    return true;
+}
+
+// ------------------------------------------------------------
+// UDP Command Sender
+// ------------------------------------------------------------
+
+void sendCommand(const IPAddress& ip, const byte* mac, int command)
+{
+    ledOn();
+
+    if (command == CMD_WAKE)
+    {
+        static const byte preamble[6] =
+        {
+            0xFF, 0xFF, 0xFF,
+            0xFF, 0xFF, 0xFF
+        };
+
+        udp.beginPacket(ip, WOL_PORT);
+
+        udp.write(preamble, sizeof(preamble));
+
+        for (uint8_t i = 0; i < WOL_REPEAT; i++)
+        {
+            udp.write(mac, MAC_SIZE);
+        }
+
+        udp.endPacket();
+
+        Serial.println(F("Wake-on-LAN packet sent"));
+    }
+    else
+    {
+        char json[96];
+
+        snprintf(
+            json,
+            sizeof(json),
+            "{\"MacAddress\":\"%s\",\"Command\":%d}",
+            mac_addr,
+            command);
+
+        udpShutdown.beginPacket(ip, UDP_SHUTDOWN_PORT);
+        udpShutdown.write((const uint8_t*)json, strlen(json));
+        udpShutdown.endPacket();
+
+        Serial.print(F("Shutdown packet: "));
+        Serial.println(json);
+    }
+
+    ledOff();
 }
