@@ -1,121 +1,53 @@
 # ESP8266 Wake-on-LAN Server
 
-A small ESP8266-based server that supports **Wake-on-LAN (WoL)**. It can also send **shutdown** and **restart** commands when used in conjunction with the [Wolow](https://wolow.site/) server.
+An ESP8266 HTTP server that sends Wake-on-LAN packets and, with the Wolow Companion, shutdown or restart commands.
 
----
+## API
 
-## 📡 Features
+`POST /command` on port `1337`.
 
-- Wake up a PC using a GET request
-- Optional shutdown and restart commands (requires Wolow)
-
----
-
-## 🔗 API Endpoints
-
-### 🖥 Wake PC
-
-`GET https://[YOUR_SERVER]:8080/command?mac=[REPLACE_WITH_MAC]&bcast=255&pwd=[REPLACE_WITH_PASSWORD]&cmd=99`
-
-### ⚠ Requires [Wolow Companion](https://wolow.site/#wolow-companion) for the following:
-
-#### ⏻ Shutdown PC
-
-`GET https://[YOUR_SERVER]:8080/command?mac=[REPLACE_WITH_MAC]&bcast=255&pwd=[REPLACE_WITH_PASSWORD]&cmd=0`
-
-#### 🔄 Restart PC
-
-`GET https://[YOUR_SERVER]:8080/command?mac=[REPLACE_WITH_MAC]&bcast=255&pwd=[REPLACE_WITH_PASSWORD]&cmd=1`
-
----
-
-## 🔧 Parameters
-
-| Parameter | Description |
-|----------|-------------|
-| `mac`    | The MAC address of the target PC |
-| `bcast`  | The broadcast IP, usually `255` |
-| `pwd`    | Your predefined password |
-| `cmd`    | Command to execute:<br>• `99` – Wake PC<br>• `0` – Shutdown PC (requires Wolow)<br>• `1` – Restart PC (requires Wolow) |
-
----
-
-## 🔌 Requirements
-
-- ESP8266 microcontroller (e.g., NodeMCU, Wemos D1 Mini)
-- Compatible firmware uploaded to handle HTTP requests
-- (Optional) Wolow server running on the target PC for shutdown/restart support
-
----
-
-## 🛠 Example Usage
-
-To **wake** a PC with MAC address `AA:BB:CC:DD:EE:FF`:
+Every request must include this header:
 
 ```
-https://my-esp8266.local:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cmd=99
+Authorization: Bearer <API_BEARER_TOKEN>
 ```
 
-To **shutdown** that same PC (with Wolow):
+The endpoint accepts an `application/json` request body:
 
+| Property | Description |
+| --- | --- |
+| `mac` | Target MAC address as 12 hex characters, for example `AABBCCDDEEFF` |
+| `bcast` | Last octet of the local broadcast address, normally `255` |
+| `cmd` | `99` wake, `0` shutdown, or `1` restart |
+
+Example wake request:
+
+```powershell
+curl.exe -X POST "http://192.168.1.50:1337/command" `
+  -H "Authorization: Bearer my-secret-token" `
+  -H "Content-Type: application/json" `
+  -d "{\"mac\":\"AABBCCDDEEFF\",\"bcast\":255,\"cmd\":99}"
 ```
-https://my-esp8266.local:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cmd=0
-```
 
-To **restart** it:
+Missing or invalid authorization returns `401 Unauthorized`. Malformed JSON or invalid fields return `400 Bad Request`. A non-JSON request returns `415 Unsupported Media Type`.
 
-```
-https://my-esp8266.local:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cmd=1
-```
+## Audit log
 
----
+The sketch writes every command outcome to Serial in a consistent format and retains the newest 32 events in a RAM-backed ring buffer. This avoids the latency, rate limits, and dependency on an external request for every command. The buffer is cleared when the ESP8266 restarts and does not write to flash.
 
-## 🧠 Notes
+The optional `GET /logs` endpoint is disabled by default. Set `ENABLE_AUDIT_LOG_ENDPOINT` to `1` in `Sketch1/settings.h` to enable it; it returns the audit entries as JSON and requires the same Bearer token as `/command`. Log entries contain request outcomes, source IP addresses, User-Agent values, target MAC addresses, and commands—but never the Bearer token. Set `AUDIT_LOG_CAPACITY` to change the buffer size.
 
-- Ensure the ESP8266 is on the same local network as the target PC.
-- Enable Wake-on-LAN in your PC’s [BIOS Settings](https://youtu.be/7rnpV8onpjM?si=Z1_Jr_2Q9qIaoAOS) and [Network Adapter Settings](https://youtu.be/4-zlIAyy10k?si=i68x27b43tMmLcFk)
-- Wolow must be running for shutdown and restart commands to work.
+## Configuration
 
----
+Set Wi-Fi details, the Bearer token, MAC address, DuckDNS domain, and DuckDNS token in `Sketch1/settings.h`.
 
-## 🌍 Accessing from Outside Your Network (Port Forwarding)
+## Requirements
 
-To control your ESP8266 remotely over the internet, you'll need to set up **port forwarding** on your router:
+- ESP8266 board, such as a NodeMCU or Wemos D1 Mini
+- Arduino ESP8266 core
+- [ArduinoJson](https://arduinojson.org/) installed through the Arduino Library Manager
+- Optional: Wolow Companion on the target PC for shutdown and restart
 
-### 1. Assign a Static IP to the ESP8266
-- Log into your router.
-- Find **DHCP settings** or **connected devices**.
-- Reserve a static IP for your ESP8266's MAC address (e.g., `192.168.1.100`).
+## Remote access
 
-### 2. Set Up Port Forwarding
-- Go to your router’s **Port Forwarding** section.
-- Forward **external port 8080** to your ESP8266’s local IP on **internal port 8080**.
-  - Protocol: **TCP**
-  - External Port: `8080`
-  - Internal IP: `192.168.1.100` (replace with your ESP8266 IP)
-  - Internal Port: `8080`
-
-### 3. Get Your Public IP Address
-- Visit [https://whatismyipaddress.com](https://whatismyipaddress.com)
-- Note your public IP (e.g., `123.45.67.89`)
-
-### 4. Make a Remote Request
-Now you can turn on your pc from anywhere using:
-
-```
-http://123.45.67.89:8080/command?mac=AABBCCDDEEFF&bcast=255&pwd=mysecret&cmd=99
----
-
-> ⚠️ Your IP can change if your ISP uses dynamic IPs, which will break remote access unless you use DDNS.
----
-
-## 📎 Resources
-
-- [ESP8266 Documentation](https://arduino-esp8266.readthedocs.io/)
-- [Wolow Official Site](https://wolow.site/#wolow-companion)
-
----
-
-## 📄 License
-
-This project is open-source and available under the MIT License.
+If using port forwarding, forward a chosen external TCP port to port `1337` on the ESP8266. Bearer authentication protects the command endpoint, but the service is plain HTTP; use a VPN or TLS-capable reverse proxy for internet exposure where possible.

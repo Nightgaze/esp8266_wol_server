@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <ESP8266HTTPClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
@@ -25,6 +26,15 @@ constexpr uint8_t WOL_REPEAT = 16;
 
 constexpr int CMD_WAKE = 99;
 
+struct AuditLogEntry
+{
+    uint32_t timestampMs;
+    String message;
+};
+
+static_assert(AUDIT_LOG_CAPACITY > 0 && AUDIT_LOG_CAPACITY <= 255,
+    "AUDIT_LOG_CAPACITY must be between 1 and 255");
+
 // ------------------------------------------------------------
 // Globals
 // ------------------------------------------------------------
@@ -40,12 +50,23 @@ const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 
 const char* mac_addr = MAC_ADDRESS;
-const char* wolPassword = WOL_PASS;
+const char* bearerToken = API_BEARER_TOKEN;
 
 const char* wolDomain = WOL_DOMAIN;
 const char* duckToken = DUCK_TOKEN;
 
+const char* requestHeaders[] =
+{
+    "Authorization",
+    "Content-Type",
+    "User-Agent"
+};
+
 unsigned long lastDnsUpdate = 0;
+
+AuditLogEntry auditLog[AUDIT_LOG_CAPACITY];
+uint8_t auditLogNext = 0;
+uint8_t auditLogCount = 0;
 
 // ------------------------------------------------------------
 // Function declarations
@@ -58,9 +79,15 @@ void updateDuckDNS();
 
 void handleHome();
 void handleCommand();
+void handleLogs();
 void handleNotFound();
 
 void sendCommand(const IPAddress& ip, const byte* mac, int command);
+
+bool isAuthorized();
+void appendLog(const String& message);
+String jsonEscape(const String& value);
+String requestContext();
 
 bool macStringToBytes(const String& mac, byte* bytes);
 
@@ -97,8 +124,14 @@ void setup()
     udp.begin(WOL_PORT);
     udpShutdown.begin(UDP_SHUTDOWN_PORT);
 
-    server.on("/", handleHome);
-    server.on("/command", handleCommand);
+    server.collectHeaders(requestHeaders,
+        sizeof(requestHeaders) / sizeof(requestHeaders[0]));
+
+    server.on("/", HTTP_GET, handleHome);
+    server.on("/command", HTTP_POST, handleCommand);
+#if ENABLE_AUDIT_LOG_ENDPOINT
+    server.on("/logs", HTTP_GET, handleLogs);
+#endif
     server.onNotFound(handleNotFound);
 
     server.begin();
@@ -259,28 +292,51 @@ void handleCommand()
 {
     ledOn();
 
-    if (!server.hasArg("mac") ||
-        !server.hasArg("pwd") ||
-        !server.hasArg("bcast") ||
-        !server.hasArg("cmd"))
+    if (!isAuthorized())
     {
-        server.send(400, "text/plain", "Missing parameters");
+        appendLog("command denied: invalid authorization" + requestContext());
+        server.sendHeader("WWW-Authenticate", "Bearer");
+        server.send(401, "text/plain", "Unauthorized");
         ledOff();
         return;
     }
 
-    String mac = server.arg("mac");
-    String password = server.arg("pwd");
+    String contentType = server.header("Content-Type");
+    contentType.toLowerCase();
 
-    if (password != wolPassword)
+    if (!contentType.startsWith("application/json"))
     {
-        server.send(403, "text/plain", "Invalid password");
+        appendLog("command rejected: content type is not application/json" + requestContext());
+        server.send(415, "text/plain", "Content-Type must be application/json");
         ledOff();
         return;
     }
 
+    StaticJsonDocument<256> request;
+    DeserializationError error = deserializeJson(request, server.arg("plain"));
+
+    if (error)
+    {
+        appendLog("command rejected: invalid JSON" + requestContext());
+        server.send(400, "text/plain", "Invalid JSON");
+        ledOff();
+        return;
+    }
+
+    if (!request["mac"].is<const char*>() ||
+        !request["bcast"].is<int>() ||
+        !request["cmd"].is<int>())
+    {
+        appendLog("command rejected: missing or invalid parameters" + requestContext());
+        server.send(400, "text/plain", "Missing or invalid parameters");
+        ledOff();
+        return;
+    }
+
+    String mac = request["mac"].as<String>();
     if (mac.length() != 12)
     {
+        appendLog("command rejected: invalid MAC length" + requestContext());
         server.send(400, "text/plain", "Invalid MAC");
         ledOff();
         return;
@@ -290,21 +346,23 @@ void handleCommand()
 
     if (!macStringToBytes(mac, targetMac))
     {
+        appendLog("command rejected: invalid MAC format" + requestContext());
         server.send(400, "text/plain", "Invalid MAC");
         ledOff();
         return;
     }
 
-    int broadcast = server.arg("bcast").toInt();
+    int broadcast = request["bcast"].as<int>();
 
     if (broadcast < 0 || broadcast > 255)
     {
+        appendLog("command rejected: invalid broadcast" + requestContext());
         server.send(400, "text/plain", "Invalid broadcast");
         ledOff();
         return;
     }
 
-    int command = server.arg("cmd").toInt();
+    int command = request["cmd"].as<int>();
 
     IPAddress targetIp = WiFi.localIP();
     targetIp[3] = broadcast;
@@ -315,6 +373,12 @@ void handleCommand()
     Serial.println(targetIp);
 
     sendCommand(targetIp, targetMac, command);
+
+    appendLog(
+        "command sent:" + requestContext() +
+        " target=" + targetIp.toString() +
+        " mac=" + mac +
+        " cmd=" + String(command));
 
     String response =
         "Command sent to " +
@@ -331,6 +395,106 @@ void handleCommand()
 void handleNotFound()
 {
     server.send(404, "text/plain", "");
+}
+
+void handleLogs()
+{
+    if (!isAuthorized())
+    {
+        server.sendHeader("WWW-Authenticate", "Bearer");
+        server.send(401, "text/plain", "Unauthorized");
+        return;
+    }
+
+    String response;
+    response.reserve(16 + auditLogCount * 200);
+    response = "{\"entries\":[";
+    const uint8_t first = auditLogCount == AUDIT_LOG_CAPACITY ? auditLogNext : 0;
+
+    for (uint8_t i = 0; i < auditLogCount; ++i)
+    {
+        const AuditLogEntry& entry = auditLog[(first + i) % AUDIT_LOG_CAPACITY];
+
+        if (i > 0)
+            response += ',';
+
+        response += "{\"timestamp_ms\":" + String(entry.timestampMs) +
+            ",\"message\":\"" + jsonEscape(entry.message) + "\"}";
+    }
+
+    response += "]}";
+    server.send(200, "application/json", response);
+}
+
+bool isAuthorized()
+{
+    if (!server.hasHeader("Authorization"))
+        return false;
+
+    return server.header("Authorization") == String("Bearer ") + bearerToken;
+}
+
+void appendLog(const String& message)
+{
+    const uint32_t timestamp = millis();
+
+    auditLog[auditLogNext] = { timestamp, message };
+    auditLogNext = (auditLogNext + 1) % AUDIT_LOG_CAPACITY;
+    if (auditLogCount < AUDIT_LOG_CAPACITY)
+        ++auditLogCount;
+
+    Serial.printf_P(PSTR("[%lu ms] AUDIT %s\n"), timestamp, message.c_str());
+}
+
+String jsonEscape(const String& value)
+{
+    String escaped;
+    escaped.reserve(value.length() + 8);
+
+    for (size_t i = 0; i < value.length(); ++i)
+    {
+        switch (value[i])
+        {
+        case '\\': escaped += F("\\\\"); break;
+        case '\"': escaped += F("\\\""); break;
+        case '\n': escaped += F("\\n"); break;
+        case '\r': escaped += F("\\r"); break;
+        case '\t': escaped += F("\\t"); break;
+        default:
+            if (static_cast<uint8_t>(value[i]) < 0x20)
+            {
+                char controlCharacter[7];
+                snprintf(controlCharacter, sizeof(controlCharacter),
+                    "\\u%04X", static_cast<uint8_t>(value[i]));
+                escaped += controlCharacter;
+            }
+            else
+            {
+                escaped += value[i];
+            }
+            break;
+        }
+    }
+
+    return escaped;
+}
+
+String requestContext()
+{
+    String userAgent = server.header("User-Agent");
+    userAgent.replace('\r', ' ');
+    userAgent.replace('\n', ' ');
+
+    constexpr size_t MAX_USER_AGENT_LENGTH = 120;
+    if (userAgent.length() > MAX_USER_AGENT_LENGTH)
+        userAgent.remove(MAX_USER_AGENT_LENGTH);
+
+    if (userAgent.length() == 0)
+        userAgent = "unknown";
+
+    return
+        " remote=" + server.client().remoteIP().toString() +
+        " user-agent=\"" + userAgent + "\"";
 }
 
 // ------------------------------------------------------------
