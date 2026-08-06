@@ -42,7 +42,7 @@ const char* password = WIFI_PASSWORD;
 const char* mac_addr = MAC_ADDRESS;
 const char* wolPassword = WOL_PASS;
 
-const char* duckDomain = DUCK_DOMAIN;
+const char* wolDomain = WOL_DOMAIN;
 const char* duckToken = DUCK_TOKEN;
 
 unsigned long lastDnsUpdate = 0;
@@ -213,7 +213,7 @@ void updateDuckDNS()
         url,
         sizeof(url),
         "https://www.duckdns.org/update?domains=%s&token=%s&ip=",
-        duckDomain,
+        wolDomain,
         duckToken);
 
     http.begin(client, url);
