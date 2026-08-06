@@ -33,13 +33,13 @@ Missing or invalid authorization returns `401 Unauthorized`. Malformed JSON or i
 
 ## Audit log
 
-The sketch writes every command outcome to Serial in a consistent format and retains the newest 32 events in a RAM-backed ring buffer. This avoids the latency, rate limits, and dependency on an external request for every command. The buffer is cleared when the ESP8266 restarts and does not write to flash.
+The sketch writes every command outcome to Serial in a consistent format and retains the newest configured number of events in a RAM-backed ring buffer (32 by default). This avoids the latency, rate limits, and dependency on an external request for every command. The buffer is cleared when the ESP8266 restarts and does not write to flash.
 
 The optional `GET /logs` endpoint is disabled by default. Set `ENABLE_AUDIT_LOG_ENDPOINT` to `1` in `Sketch1/settings.h` to enable it; it returns the audit entries as JSON and requires the same Bearer token as `/command`. Log entries contain request outcomes, source IP addresses, User-Agent values, target MAC addresses, and commands—but never the Bearer token. Set `AUDIT_LOG_CAPACITY` to change the buffer size.
 
 ## Configuration
 
-Set Wi-Fi details, the Bearer token, MAC address, DuckDNS domain, and DuckDNS token in `Sketch1/settings.h`.
+Set Wi-Fi details, the Bearer token, MAC address, DuckDNS domain, and DuckDNS token in `Sketch1/settings.h`. Set `AUDIT_LOG_CAPACITY` to choose the in-memory audit-log size, and set `ENABLE_AUDIT_LOG_ENDPOINT` to `1` only when you want to expose the authenticated `GET /logs` endpoint.
 
 ## Requirements
 
