@@ -47,6 +47,7 @@ Set Wi-Fi details, the Bearer token, MAC address, DuckDNS domain, and DuckDNS to
 - Arduino ESP8266 core
 - [ArduinoJson](https://arduinojson.org/) installed through the Arduino Library Manager
 - Optional: Wolow Companion on the target PC for shutdown and restart
+- Enable Wake-on-LAN in your PC’s [BIOS Settings](https://youtu.be/7rnpV8onpjM?si=Z1_Jr_2Q9qIaoAOS) and [Network Adapter Settings](https://youtu.be/4-zlIAyy10k?si=i68x27b43tMmLcFk)
 
 ## Remote access
 
