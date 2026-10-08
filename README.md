@@ -1,6 +1,6 @@
 # ESP8266 Wake-on-LAN Server
 
-An ESP8266 HTTP server that sends Wake-on-LAN packets and, with the Wolow Companion, shutdown or restart commands.
+An ESP8266 HTTP server that sends Wake-on-LAN packets
 
 ## API
 
@@ -46,7 +46,7 @@ Set Wi-Fi details, the Bearer token, MAC address, DuckDNS domains, and DuckDNS t
 - ESP8266 board, such as a NodeMCU or Wemos D1 Mini
 - Arduino ESP8266 core
 - [ArduinoJson](https://arduinojson.org/) installed through the Arduino Library Manager
-- Optional: Wolow Companion on the target PC for shutdown and restart
+- Enable Wake-on-LAN in your PC’s [BIOS Settings](https://youtu.be/7rnpV8onpjM?si=Z1_Jr_2Q9qIaoAOS) and [Network Adapter Settings](https://youtu.be/4-zlIAyy10k?si=i68x27b43tMmLcFk)
 
 ## Remote access
 
