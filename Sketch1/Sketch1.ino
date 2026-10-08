@@ -52,7 +52,7 @@ const char* password = WIFI_PASSWORD;
 const char* mac_addr = MAC_ADDRESS;
 const char* bearerToken = API_BEARER_TOKEN;
 
-const char* wolDomain = WOL_DOMAIN;
+const char* wolDomains = WOL_DOMAINS;
 const char* duckToken = DUCK_TOKEN;
 
 const char* requestHeaders[] =
@@ -246,7 +246,7 @@ void updateDuckDNS()
         url,
         sizeof(url),
         "https://www.duckdns.org/update?domains=%s&token=%s&ip=",
-        wolDomain,
+        wolDomains,
         duckToken);
 
     http.begin(client, url);
