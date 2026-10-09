@@ -39,7 +39,7 @@ The optional `GET /logs` endpoint is disabled by default. Set `ENABLE_AUDIT_LOG_
 
 ## Configuration
 
-Set Wi-Fi details, the Bearer token, MAC address, DuckDNS domains, and DuckDNS token in `Sketch1/settings.h`. `WOL_DOMAINS` is a comma-separated DuckDNS domain list; for example, it is configured as `"theveiledhouse,projectswarm"`. Set `AUDIT_LOG_CAPACITY` to choose the in-memory audit-log size, and set `ENABLE_AUDIT_LOG_ENDPOINT` to `1` only when you want to expose the authenticated `GET /logs` endpoint.
+Set Wi-Fi details, the Bearer token, MAC address, DuckDNS domains, and DuckDNS token in `Sketch1/settings.h`. `WOL_DOMAINS` is a comma-separated DuckDNS domain list; Set `AUDIT_LOG_CAPACITY` to choose the in-memory audit-log size, and set `ENABLE_AUDIT_LOG_ENDPOINT` to `1` only when you want to expose the authenticated `GET /logs` endpoint.
 
 ## Requirements
 
